@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Pickars Drivers</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>firebaseio.com</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Enable camera access to make video calls and share moments with friends</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Securely authenticate with Face ID</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Share your location to find nearby friends and local events</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We use your location to show relevant content in your area</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Allow microphone access for voice calls and audio messages</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save photos from Pickars Driver to your camera roll</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Access your photos to set profile pictures and share memories</string>
+	<key>NSRemoteNotificationUsageDescription</key>
+	<string>This app uses push notifications to send you updates and alerts.</string>
+	<key>NSUserNotificationAlertStyle</key>
+	<string>alert</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>LufgaBlack.ttf</string>
+		<string>LufgaBlackItalic.ttf</string>
+		<string>LufgaBold.ttf</string>
+		<string>LufgaBoldItalic.ttf</string>
+		<string>LufgaExtraBold.ttf</string>
+		<string>LufgaExtraBoldItalic.ttf</string>
+		<string>LufgaExtraLight.ttf</string>
+		<string>LufgaExtraLightItalic.ttf</string>
+		<string>LufgaItalic.ttf</string>
+		<string>LufgaLight.ttf</string>
+		<string>LufgaLightItalic.ttf</string>
+		<string>LufgaMedium.ttf</string>
+		<string>LufgaMediumItalic.ttf</string>
+		<string>LufgaRegular.ttf</string>
+		<string>LufgaSemiBold.ttf</string>
+		<string>LufgaSemiBoldItalic.ttf</string>
+		<string>LufgaThin.ttf</string>
+		<string>LufgaThinItalic.ttf</string>
+	</array>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+		<string>location-services</string>
+	</array>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleLightContent</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+</dict>
+</plist>
