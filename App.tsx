@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Provider, useDispatch } from 'react-redux';
 import { Platform } from 'react-native';
 import PushNotificationIOS, { PushNotification } from '@react-native-community/push-notification-ios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 import PagesNavigator from './src/PagesNavigator';
@@ -15,6 +16,9 @@ import { navigate } from './src/Navigation/navigationRef';
 import { BaseUrl } from './src/Redux/baseurl';
 import { InternetProvider } from './src/Context/InternetContext';
 import { getUserProfile } from './src/Redux/User/userSlice';
+
+// Key for AsyncStorage to prevent duplicate push notification registrations
+const NORMAL_PUSH_TOKEN_KEY = 'normalPushTokenRegistered';
 
 const AppContent = () => {
   const [deviceToken, setDeviceToken] = useState<string | null>(null);
@@ -61,13 +65,23 @@ const AppContent = () => {
 
   const registerDeviceToken = useCallback(async () => {
     if (!userId || !deviceToken) return;
+
     try {
+      // Check if the token has already been registered
+      const isRegistered = await AsyncStorage.getItem(NORMAL_PUSH_TOKEN_KEY);
+      if (isRegistered) {
+        console.log('✅ Device token already registered. Skipping API call.');
+        return;
+      }
+
       await axios.post(`${BaseUrl}/api/v1/notification/push-notifications/driver-register-device-token`, {
         userId,
         deviceToken,
         platform: 'iOS',
       });
       console.log('✅ Device token registered successfully');
+      // Store a flag in AsyncStorage to indicate successful registration
+      await AsyncStorage.setItem(NORMAL_PUSH_TOKEN_KEY, 'true');
     } catch (error: any) {
       console.error('❌ Error registering device token:', error.response?.data || error.message);
     }

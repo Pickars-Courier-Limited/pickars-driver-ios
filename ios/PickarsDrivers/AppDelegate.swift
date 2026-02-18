@@ -4,6 +4,7 @@ import React_RCTAppDelegate
 import ReactAppDependencyProvider
 import UserNotifications
 import RNCPushNotificationIOS
+import GoogleMaps
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -18,7 +19,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
-    
+      GMSServices.provideAPIKey("AIzaSyDEA03t46Rxy4uqPY7hcQmqyfU7uPpkh2c")
+   
     // ✅ Set UNUserNotificationCenter delegate for push handling
     UNUserNotificationCenter.current().delegate = self
     

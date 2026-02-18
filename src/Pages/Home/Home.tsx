@@ -1,14 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
   View,
-  Animated,
   Pressable,
-  Image,
-  Alert,
   RefreshControl,
+  Dimensions,
+  StatusBar,
 } from 'react-native';
 import { useDispatch } from 'react-redux';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -17,353 +16,254 @@ import ShimmerLoader from '../../Components/Loader/ShimmerLoader';
 import { getUserProfile } from '../../Redux/User/userSlice';
 import { AppDispatch } from '../../Redux/Store';
 import { CompanyName } from '../../CompanyName';
-import IconsContainer from '../../Components/Icons/IconContainer';
-import ArrowRightIcon from '../../Components/Icons/Arrows/ArrowRightIcon';
 import {
   RegularText,
   SemiBoldText,
   BoldText,
+  MediumText,
 } from '../../Components/Texts/CustomTexts/BaseTexts';
+
 import { formatName } from '../Profile/Profile';
-import images from '../../../assets/images/newlogo.png';
 import {
   fetchRideSocketLogs,
   getRidesByDriver,
 } from '../../Redux/Riders/riders';
-import { groupLogsByDate } from '../Rides/RidesScreen';
+import UserLocationMap from './UserLocationMap';
+import UserMap from './UserMap';
 
-interface RideSocketLog {
-  id: string;
-  timestamp: string;
-}
-
-const getFormattedDate = () => {
-  const today = new Date();
-  const weekday = today.toLocaleDateString('en-US', { weekday: 'long' });
-  const day = today.getDate();
-
-  const getOrdinal = (n: number) => {
-    if (n > 3 && n < 21) return 'th';
-    switch (n % 10) {
-      case 1:
-        return 'st';
-      case 2:
-        return 'nd';
-      case 3:
-        return 'rd';
-      default:
-        return 'th';
-    }
-  };
-
-  const month = today.toLocaleDateString('en-US', { month: 'long' });
-  const year = today.getFullYear();
-
-  return `${weekday}, ${day}${getOrdinal(day)} ${month} ${year}`;
-};
-
-const ProfileInfo = ({ profile }: { profile: any }) => (
-  <View style={styles.profileInfoContainer}>
-    <BoldText fontSize={20} color={Colors.headerColor}>
-      Hi, {formatName(profile?.lastName)} {formatName(profile?.firstName)}
-    </BoldText>
-    <RegularText fontSize={14} color={Colors.grayColor}>
-      Today is {getFormattedDate()}
-    </RegularText>
-  </View>
-);
-
-interface RideStatusCardProps {
-  borderColor: string;
-  backgroundColor: string;
-  imageSource: any;
-  statusText: string;
-  onPress: () => void;
-  count: number;
-}
-
-const RideStatusCard = ({
-  borderColor,
-  backgroundColor,
-  imageSource,
-  statusText,
-  onPress,
-  count,
-}: RideStatusCardProps) => (
-  <Pressable style={styles.statusCard} onPress={onPress}>
-    <View style={[styles.statusCardInnerBorder, { borderColor }]}>
-      <View style={[styles.statusCardInnerBackground, { backgroundColor }]}>
-        <Image
-          source={imageSource}
-          style={styles.statusCardImage}
-          resizeMode="contain"
-        />
-      </View>
-    </View>
-    <RegularText style={styles.statusCardText}>
-      {statusText} ({count})
-    </RegularText>
-  </Pressable>
-);
-
-interface FinishedRidesCardProps {
-  totalRides: number;
-  onPress: () => void;
-}
-
-const FinishedRidesCard = ({ totalRides, onPress }: FinishedRidesCardProps) => (
-  <Pressable style={styles.finishedRidesContainer} onPress={onPress}>
-    <View style={styles.finishedRidesContent}>
-      <SemiBoldText fontSize={12} color={Colors.grayColor}>
-        FINISHED RIDES
-      </SemiBoldText>
-      <View style={styles.finishedRidesInfo}>
-        <View>
-          <BoldText fontSize={32}>{totalRides}</BoldText>
-          <RegularText fontSize={14} color={Colors.headerColor}>
-            Total Finished Rides
-          </RegularText>
-        </View>
-        <IconsContainer
-          backgroundColor={Colors.grayColorFaded}
-          IconComponent={ArrowRightIcon}
-          iconColor={Colors.grayColor}
-          iconWidth={14}
-          iconHeight={14}
-          padding={16}
-        />
-      </View>
-    </View>
-  </Pressable>
-);
+const { width } = Dimensions.get('window');
 
 const Home = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<any>(null);
   const navigation = useNavigation();
 
-  const [newRidesCount, setNewRidesCount] = useState(0);
-  const [acceptedRidesCount, setAcceptedRidesCount] = useState(0);
-  const [ongoingRidesCount, setOngoingRidesCount] = useState(0);
-  const [completedRidesCount, setCompletedRidesCount] = useState(0);
-  const [cancelledRidesCount, setCancelledRidesCount] = useState(0);
-
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [stats, setStats] = useState({
+    new: 0,
+    accepted: 0,
+    ongoing: 0,
+    completed: 0,
+    cancelled: 0,
+    total: 0,
+    todayTotal: 0,
+    todayFinished: 0,
+  });
+
+  const isToday = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    return date.toDateString() === today.toDateString();
+  };
 
   const calculateRideStats = useCallback((allRides: any[]) => {
-    console.log(allRides, 'allRides');
-    const newRides = allRides.filter(
-      ride => !ride?.acceptRide && !ride?.cancelRide?.isCancelled,
+    const accepted = allRides.filter(
+      r => r?.acceptRide && !r?.startRide?.isStarted && !r?.endRide?.isEnded,
     );
-    const acceptedRides = allRides.filter(
-      ride =>
-        ride?.acceptRide &&
-        !ride?.startRide?.isStarted &&
-        !ride?.endRide?.isEnded,
+    const ongoing = allRides.filter(
+      r => r?.acceptRide && r?.startRide?.isStarted && !r?.endRide?.isEnded,
     );
-    const ongoingRides = allRides.filter(
-      ride =>
-        ride?.acceptRide &&
-        ride?.startRide?.isStarted &&
-        !ride?.endRide?.isEnded,
-    );
-    const completedRides = allRides.filter(
-      ride => ride?.endRide?.isEnded === true,
-    );
-    const cancelledRides = allRides.filter(
-      ride => ride?.cancelRide?.isCancelled,
-    );
+    const completed = allRides.filter(r => r?.endRide?.isEnded);
+    const cancelled = allRides.filter(r => r?.cancelRide?.isCancelled);
+    const todayRides = allRides.filter(r => isToday(r.createdAt));
+    const todayFinished = completed.filter(r => isToday(r.endRide?.endedAt));
 
-    setAcceptedRidesCount(acceptedRides.length);
-    setOngoingRidesCount(ongoingRides.length);
-    setCompletedRidesCount(completedRides.length);
-    setCancelledRidesCount(cancelledRides.length);
+    setStats(prev => ({
+      ...prev,
+      accepted: accepted.length,
+      ongoing: ongoing.length,
+      completed: completed.length,
+      cancelled: cancelled.length,
+      total: allRides.length,
+      todayTotal: todayRides.length,
+      todayFinished: todayFinished.length,
+    }));
   }, []);
 
-  const [rideSockets, setRideSockets] = useState<RideSocketLog[]>([]);
-
-  const fetchLogs = useCallback(() => {
-    return dispatch(fetchRideSocketLogs())
-      .then((response: any) => {
-        console.log('Response Payload (fetchLogs):', response.payload);
-        setRideSockets(response.payload?.rideSockets || []);
-        setNewRidesCount(response.payload?.rideSockets?.length || 0);
-        setError(null);
-      })
-      .catch((err: any) => {
-        console.error('Error fetching logs:', err);
-        setError(err?.response?.data || 'Error fetching ride socket logs');
-        throw err;
-      });
-  }, [dispatch]);
-
-  const fetchRideData = useCallback(() => {
-    return dispatch(getRidesByDriver())
-      .then(response => {
-        if (response?.payload?.success) {
-          const rawRides = response.payload.rideSockets || [];
-          const allRidesFlattened = Object.values(rawRides).flat();
-          calculateRideStats(allRidesFlattened);
-          setError(null);
-        } else {
-          const errorMessage =
-            response?.payload?.message || 'Failed to fetch ride data.';
-          Alert.alert('Error', errorMessage);
-          throw new Error(errorMessage);
-        }
-      })
-      .catch(err => {
-        console.error('Error fetching ride data:', err);
-        Alert.alert(
-          'Error',
-          `Failed to fetch ride data: ${err.message || 'Unknown error'}`,
-        );
-        setError(
-          `Failed to fetch ride data: ${err.message || 'Unknown error'}`,
-        );
-        throw err;
-      });
-  }, [dispatch, calculateRideStats]);
-
-  const fetchUserProfileData = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const response = await dispatch(getUserProfile()).unwrap();
-      setUserProfile(response);
-      setError(null);
-    } catch (error: any) {
-      console.error('Error fetching user profile:', error);
-      Alert.alert(
-        'Error',
-        `Failed to fetch user profile: ${error.message || 'Unknown error'}`,
-      );
-      setError(
-        `Failed to fetch user profile: ${error.message || 'Unknown error'}`,
-      );
-      throw error;
-    }
-  }, [dispatch]);
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    setLoading(true);
-    try {
-      await Promise.all([fetchRideData(), fetchUserProfileData(), fetchLogs()]);
-    } catch (error) {
-      console.error('Error during refresh:', error);
+      const [profileRes, ridesRes, logsRes] = await Promise.all([
+        dispatch(getUserProfile()).unwrap(),
+        dispatch(getRidesByDriver()),
+        dispatch(fetchRideSocketLogs()),
+      ]);
+      setUserProfile(profileRes);
+      setStats(prev => ({
+        ...prev,
+        new: logsRes.payload?.rideSockets?.length || 0,
+      }));
+      if (ridesRes?.payload?.success) {
+        const flattened = Object.values(
+          ridesRes.payload.rideSockets || {},
+        ).flat();
+        calculateRideStats(flattened);
+      }
+    } catch (err) {
+      console.error(err);
     } finally {
-      setRefreshing(false);
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [fetchRideData, fetchUserProfileData, fetchLogs]);
+  }, [dispatch, calculateRideStats]);
 
   useFocusEffect(
     useCallback(() => {
-      handleRefresh();
-      return () => {};
-    }, [handleRefresh]),
+      fetchData();
+    }, [fetchData]),
   );
 
-  if (loading) {
-    return <ShimmerLoader />;
-  }
-
-  if (error) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.errorContainer}>
-          <BoldText fontSize={18} color={Colors.errorColor}>
-            Error
-          </BoldText>
-          <RegularText fontSize={14} color={Colors.grayColor}>
-            {error}
-          </RegularText>
-          <Pressable onPress={handleRefresh} style={styles.retryButton}>
-            <RegularText color={Colors.whiteColor}>Tap to Retry</RegularText>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  if (loading) return <ShimmerLoader />;
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
       <ScrollView
-        contentContainerStyle={styles.scrollViewContent}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={[Colors.primaryColor]}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchData();
+            }}
             tintColor={Colors.primaryColor}
           />
         }
       >
-        {userProfile && <ProfileInfo profile={userProfile} />}
+        {/* HEADER AREA */}
+        <View style={styles.header}>
+          <View>
+            <RegularText fontSize={14} color="#8E8E93">
+              Good morning,
+            </RegularText>
+            <BoldText fontSize={24} color="#1C1C1E">
+              {formatName(userProfile?.firstName)}
+            </BoldText>
+          </View>
+          <View style={styles.statusIndicator}>
+            <View style={styles.pulseDot} />
+            <MediumText fontSize={12} color="#34C759">
+              Online
+            </MediumText>
+          </View>
+        </View>
 
-        <ScrollView
-          horizontal
-          contentContainerStyle={styles.rideStatusScrollContainer}
-          showsHorizontalScrollIndicator={false}
+        {/* MAP CARD: Clean & Integrated */}
+        <View style={styles.mapWrapper}>
+          <UserMap name={userProfile} />
+          <View style={styles.mapLabel}>
+            <MediumText fontSize={10} color="#FFFFFF">
+              LIVE LOCATION
+            </MediumText>
+          </View>
+        </View>
+
+        {/* URGENT ACTION: Highlighted New Orders */}
+        <Pressable
+          style={styles.urgentCard}
+          onPress={() => navigation.navigate('IncomingRides' as never)}
         >
-          <RideStatusCard
-            borderColor={Colors.primaryColor}
-            backgroundColor={Colors.primaryColor}
-            imageSource={images}
-            statusText="New"
-            count={newRidesCount}
-            onPress={() => navigation.navigate('IncomingRides' as never)}
-          />
-          <RideStatusCard
-            borderColor={Colors.grayColor}
-            backgroundColor={Colors.grayColor}
-            imageSource={images}
-            statusText="Accepted"
-            count={acceptedRidesCount}
-            onPress={() =>
-              navigation.navigate(
-                'RidesLog' as never,
-                { statusPassed: 'accepted' } as never,
-              )
-            }
-          />
-          <RideStatusCard
-            borderColor={Colors.greenColor}
-            backgroundColor={Colors.greenColor}
-            imageSource={images}
-            statusText="Ongoing"
-            count={ongoingRidesCount}
-            onPress={() =>
-              navigation.navigate(
-                'RidesLog' as never,
-                { statusPassed: 'ongoing' } as never,
-              )
-            }
-          />
-          <RideStatusCard
-            borderColor={Colors.errorColor}
-            backgroundColor={Colors.errorColor}
-            imageSource={images}
-            statusText="Cancelled"
-            count={cancelledRidesCount}
-            onPress={() =>
-              navigation.navigate(
-                'RidesLog' as never,
-                { statusPassed: 'cancelled' } as never,
-              )
-            }
-          />
-        </ScrollView>
+          <View>
+            <SemiBoldText
+              fontSize={14}
+              color="#FFFFFF"
+              style={{ opacity: 0.8 }}
+            >
+              New Orders
+            </SemiBoldText>
+            <BoldText fontSize={32} color="#FFFFFF">
+              {stats.new}
+            </BoldText>
+          </View>
+          <View style={styles.whiteArrow}>
+            <MediumText fontSize={12} color={Colors.primaryColor}>
+              View
+            </MediumText>
+          </View>
+        </Pressable>
 
-        <FinishedRidesCard
-          totalRides={completedRidesCount}
-          onPress={() => navigation.navigate('RidesScreen' as never)}
-        />
+        {/* STATS BENTO GRID */}
+        <View style={styles.bentoGrid}>
+          <Pressable
+            style={styles.bentoItem}
+            onPress={() =>
+              navigation.navigate('RidesLog', { statusPassed: 'ongoing' })
+            }
+          >
+            <SemiBoldText fontSize={12} color="#8E8E93">
+              ONGOING
+            </SemiBoldText>
+            <BoldText fontSize={22} color="#1C1C1E">
+              {stats.ongoing}
+            </BoldText>
+          </Pressable>
+
+          <Pressable
+            style={styles.bentoItem}
+            onPress={() =>
+              navigation.navigate('RidesLog', { statusPassed: 'accepted' })
+            }
+          >
+            <SemiBoldText fontSize={12} color="#8E8E93">
+              ACCEPTED
+            </SemiBoldText>
+            <BoldText fontSize={22} color="#1C1C1E">
+              {stats.accepted}
+            </BoldText>
+          </Pressable>
+        </View>
+
+        {/* PERFORMANCE FOOTPRINT */}
+        <View style={styles.performanceSection}>
+          <View style={styles.sectionTitle}>
+            <BoldText fontSize={18} color="#1C1C1E">
+              Daily Performance
+            </BoldText>
+            <RegularText fontSize={12} color="#8E8E93">
+              Today
+            </RegularText>
+          </View>
+
+          <View style={styles.performanceCard}>
+            <View style={styles.perfStat}>
+              <BoldText fontSize={20} color="#1C1C1E">
+                {stats.todayFinished}
+              </BoldText>
+              <RegularText fontSize={11} color="#8E8E93">
+                Completed
+              </RegularText>
+            </View>
+            <View style={styles.perfDivider} />
+            <View style={styles.perfStat}>
+              <BoldText fontSize={20} color="#1C1C1E">
+                {stats.total}
+              </BoldText>
+              <RegularText fontSize={11} color="#8E8E93">
+                Total Trips
+              </RegularText>
+            </View>
+            <View style={styles.perfDivider} />
+            <View style={styles.perfStat}>
+              <BoldText fontSize={20} color={Colors.errorColor}>
+                {stats.cancelled}
+              </BoldText>
+              <RegularText fontSize={11} color="#8E8E93">
+                Cancelled
+              </RegularText>
+            </View>
+          </View>
+        </View>
 
         <View style={styles.footer}>
-          <RegularText fontSize={12}>{CompanyName} Courier Limited</RegularText>
+          <MediumText
+            fontSize={11}
+            color="#C7C7CC"
+            style={{ letterSpacing: 1.5 }}
+          >
+            {CompanyName.toUpperCase()} LOGISTICS
+          </MediumText>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -371,86 +271,118 @@ const Home = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.whiteColorF4,
-  },
-  scrollViewContent: {
-    backgroundColor: Colors.whiteColorF4,
-    margin: 12,
-    gap: 12,
-  },
-  profileInfoContainer: {
-    marginTop: 16,
-  },
-  finishedRidesContainer: {
-    padding: 12,
-    backgroundColor: Colors.whiteColor,
-    borderRadius: 12,
-    marginTop: 12,
-    gap: 10,
-  },
-  finishedRidesContent: {
-    gap: 16,
-  },
-  finishedRidesInfo: {
+  container: { flex: 1, backgroundColor: '#F2F2F7' },
+  scrollContent: { padding: 20, paddingBottom: 60 },
+
+  header: {
     flexDirection: 'row',
-    gap: 4,
-    alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  rideStatusScrollContainer: {
-    padding: 12,
-    paddingTop: 24,
-    paddingBottom: 12,
-    marginBottom: 0,
-    gap: 24,
-  },
-  statusCard: {
     alignItems: 'center',
+    marginBottom: 25,
+    marginTop: 10,
   },
-  statusCardInnerBorder: {
-    padding: 4,
-    borderRadius: 120,
-    borderWidth: 2,
-    width: 72,
-    height: 72,
-  },
-  statusCardInnerBackground: {
-    padding: 12,
-    borderRadius: 120,
+  statusIndicator: {
     flexDirection: 'row',
-    gap: 12,
     alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
+    backgroundColor: '#E5F9EB',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 100,
+    gap: 6,
   },
-  statusCardImage: {
-    width: 36,
-    height: 36,
+  pulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34C759',
   },
-  statusCardText: {
-    margin: 0,
-    padding: 0,
-    fontSize: 14,
+
+  mapWrapper: {
+    height: 180,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: '#FFF',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
   },
-  footer: {
-    marginVertical: 48,
-    alignSelf: 'center',
+  mapLabel: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: Colors.whiteColorF4,
-  },
-  retryButton: {
-    marginTop: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+
+  urgentCard: {
     backgroundColor: Colors.primaryColor,
-    borderRadius: 8,
+    borderRadius: 24,
+    padding: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    shadowColor: Colors.primaryColor,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  whiteArrow: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+
+  bentoGrid: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 25,
+  },
+  bentoItem: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+
+  performanceSection: {
+    marginTop: 10,
+  },
+  sectionTitle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 15,
+    paddingHorizontal: 4,
+  },
+  performanceCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  perfStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  perfDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: '#E5E5EA',
+  },
+
+  footer: {
+    marginTop: 40,
+    alignItems: 'center',
   },
 });
 

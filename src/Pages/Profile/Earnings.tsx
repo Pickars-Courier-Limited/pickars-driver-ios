@@ -1,57 +1,39 @@
-import React, {useState, useCallback} from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   View,
-  Text,
   Pressable,
-  FlatList,
+  SectionList,
   SafeAreaView,
-  ActivityIndicator,
   RefreshControl,
   Modal,
+  StatusBar,
 } from 'react-native';
-import {Colors} from '../../Components/Colors/Colors';
+import { Colors } from '../../Components/Colors/Colors';
 import {
   BoldText,
   MediumText,
   RegularText,
 } from '../../Components/Texts/CustomTexts/BaseTexts';
-import {useFocusEffect, useNavigation} from '@react-navigation/native';
-import {useDispatch} from 'react-redux';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useDispatch } from 'react-redux';
 import {
   fetchEarnings,
   fetchAccountDetails,
   fetchWithdrawals,
 } from '../../Redux/User/userSlice';
-import {AppDispatch} from '../../Redux/Store';
+import { AppDispatch } from '../../Redux/Store';
 import IconsContainer from '../../Components/Icons/IconContainer';
 import EarningsIcon from '../../Components/Icons/EarningsIcon/EarningsIcon';
 import CustomButton from '../../Components/Buttons/CustomButton';
 import ArrowRightIcon from '../../Components/Icons/Arrows/ArrowRightIcon';
-
-// Helper function to group data by month and year
-const groupByMonth = (data: any[]) => {
-  return data.reduce((acc: any, item) => {
-    const date = new Date(item.createdAt);
-    const monthYear = `${date.toLocaleString('default', {
-      month: 'long',
-    })} ${date.getFullYear()}`;
-    if (!acc[monthYear]) {
-      acc[monthYear] = [];
-    }
-    acc[monthYear].push(item);
-    return acc;
-  }, {});
-};
+import ShimmerLoader from '../../Components/Loader/ShimmerLoader';
 
 const Earnings: React.FC = () => {
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [earnings, setEarnings] = useState<any[]>([]);
-  const [accountDetails, setAccountDetails] = useState<any[]>([]);
-  const [accountDetailsBank, setAccountDetailsBank] = useState<any[]>([]);
+  const [accountDetailsBank, setAccountDetailsBank] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
-  const [loadingAccountDetails, setLoadingAccountDetails] =
-    useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'earnings' | 'withdrawals'>(
     'earnings',
   );
@@ -61,42 +43,19 @@ const Earnings: React.FC = () => {
   const [selectedWithdrawal, setSelectedWithdrawal] = useState<any>(null);
 
   const dispatch = useDispatch<AppDispatch>();
-  const navigation = useNavigation();
-
-  const handleWithdraw = async () => {
-    try {
-      setLoadingAccountDetails(true);
-
-      const response: any = await dispatch(fetchAccountDetails());
-
-      if (response.payload.success) {
-        const {accountDetails = [], balance} = response.payload;
-        setAccountDetails(accountDetails);
-
-        navigation.navigate('WithdrawPage', {
-          accountDetails,
-          balancePassed: balance,
-        });
-      } else {
-        console.error('Failed to fetch account details');
-      }
-    } catch (error) {
-      console.error('Error during account details fetch:', error);
-    } finally {
-      setLoadingAccountDetails(false);
-    }
-  };
+  const navigation = useNavigation<any>();
 
   const fetchData = async () => {
-    setLoading(true);
     setRefreshing(true);
-
     try {
-      const withdrawalsResponse = await dispatch(fetchWithdrawals());
-      setWithdrawals(withdrawalsResponse.payload?.withdrawals || []);
-
-      const earningsResponse = await dispatch(fetchEarnings());
-      setEarnings(earningsResponse.payload?.earnings || []);
+      const [wRes, eRes, aRes]: any = await Promise.all([
+        dispatch(fetchWithdrawals()),
+        dispatch(fetchEarnings()),
+        dispatch(fetchAccountDetails()),
+      ]);
+      setWithdrawals(wRes.payload?.withdrawals || []);
+      setEarnings(eRes.payload?.earnings || []);
+      setAccountDetailsBank(aRes.payload?.balance || 0);
     } catch (error) {
       console.error(error);
     } finally {
@@ -108,208 +67,184 @@ const Earnings: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       fetchData();
-
-      dispatch(fetchAccountDetails())
-        .then((response: any) => {
-          if (response.payload.success) {
-            console.log(response.payload);
-            setAccountDetails(response.payload.accountDetails || []);
-            setAccountDetailsBank(response.payload.balance || []);
-          }
-        })
-        .catch(console.error);
-    }, [dispatch]),
+    }, []),
   );
 
-  const renderEarningsItem = ({item}: {item: any}) => (
-    <View style={styles.logItem}>
-      <View style={styles.logTextContainer}>
-        <View style={{flexDirection: 'row', gap: 8, alignItems: 'center'}}>
-          <IconsContainer
-            backgroundColor={Colors.grayColorFaded}
-            IconComponent={EarningsIcon}
-            iconColor={Colors.grayColor}
-            iconWidth={20}
-            iconHeight={20}
-            padding={20}
+  const sections = useMemo(() => {
+    const data = activeTab === 'earnings' ? earnings : withdrawals;
+    const groups = data.reduce((acc: any, item) => {
+      const date = new Date(item.createdAt);
+      const title = `${date.toLocaleString('default', {
+        month: 'long',
+      })} ${date.getFullYear()}`;
+      if (!acc[title]) acc[title] = [];
+      acc[title].push(item);
+      return acc;
+    }, {});
+    return Object.keys(groups).map(title => ({ title, data: groups[title] }));
+  }, [activeTab, earnings, withdrawals]);
+
+  const renderItem = ({ item }: { item: any }) => {
+    const isEarning = activeTab === 'earnings';
+    return (
+      <Pressable
+        style={styles.transactionItem}
+        onPress={() =>
+          !isEarning && (setSelectedWithdrawal(item), setModalVisible(true))
+        }
+      >
+        <View
+          style={[
+            styles.iconBox,
+            { backgroundColor: isEarning ? '#E8F5E9' : '#FFEBEE' },
+          ]}
+        >
+          <EarningsIcon
+            color={isEarning ? '#2E7D32' : '#C62828'}
+            width={20}
+            height={20}
           />
-          <View>
-            <MediumText style={styles.logDescription}>{item.header}</MediumText>
-            <RegularText style={styles.logDate}>
-              {formatDate(item.createdAt)}
-            </RegularText>
-          </View>
         </View>
-      </View>
-      <BoldText style={{color: Colors.headerColor}}>
-        +₦{item.amount.toLocaleString()}
-      </BoldText>
-    </View>
-  );
-
-  const formatDate = (date: string) => {
-    const options: Intl.DateTimeFormatOptions = {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    };
-    return new Date(date).toLocaleDateString('en-GB', options);
+        <View style={styles.transactionDetails}>
+          <MediumText style={styles.transactionTitle}>
+            {isEarning ? item.header : `To ${item.bank}`}
+          </MediumText>
+          <RegularText style={styles.transactionDate}>
+            {new Date(item.createdAt).toLocaleDateString('en-US', {
+              day: '2-digit',
+              month: 'short',
+            })}
+            {!isEarning && ` • ${item.status}`}
+          </RegularText>
+        </View>
+        <View style={styles.amountContainer}>
+          <BoldText
+            style={[
+              styles.amountText,
+              { color: isEarning ? '#2E7D32' : '#1A1A1A' },
+            ]}
+          >
+            {isEarning ? '+' : '-'} ₦{item.amount.toLocaleString()}
+          </BoldText>
+          {!isEarning && <ArrowRightIcon width={10} height={10} color="#CCC" />}
+        </View>
+      </Pressable>
+    );
   };
 
-  const renderWithdrawalsItem = ({item}: {item: any}) => (
-    <Pressable
-      style={styles.logItem}
-      onPress={() => {
-        setSelectedWithdrawal(item);
-        setModalVisible(true);
-      }}>
-      <View style={styles.logTextContainer}>
-        <View style={{flexDirection: 'row', gap: 8, alignItems: 'center'}}>
-          <IconsContainer
-            backgroundColor={Colors.errorColorFaded}
-            IconComponent={EarningsIcon}
-            iconColor={Colors.errorColor}
-            iconWidth={16}
-            iconHeight={16}
-            padding={16}
-          />
-          <View>
-            <BoldText
-              style={[
-                styles.logDescription,
-                {fontSize: 14, color: Colors.errorColor},
-              ]}>
-              - ₦{item.amount.toLocaleString()}
-            </BoldText>
-            <RegularText style={styles.logDate}>
-              {item?.status} || {formatDate(item.createdAt)}
-            </RegularText>
-          </View>
-        </View>
-      </View>
-      <View style={{flexDirection: 'column', alignItems: 'flex-end', gap: 2}}>
-        <IconsContainer
-          backgroundColor={Colors.grayColorFaded}
-          IconComponent={ArrowRightIcon}
-          iconColor={Colors.grayColor}
-          iconWidth={12}
-          iconHeight={12}
-          padding={16}
-        />
-      </View>
-    </Pressable>
-  );
-
-  const dataToDisplay = activeTab === 'earnings' ? earnings : withdrawals;
-  const groupedData = groupByMonth(dataToDisplay);
-
-  const renderSection = ({item: month}) => (
-    <View key={month}>
-      <RegularText style={styles.monthHeader}>{month}</RegularText>
-      <FlatList
-        data={groupedData[month]}
-        keyExtractor={item => item._id}
-        renderItem={
-          activeTab === 'earnings' ? renderEarningsItem : renderWithdrawalsItem
-        }
-        contentContainerStyle={styles.listContainer}
-        // No need for refreshing on inner FlatList if the outer one handles it
-      />
-    </View>
-  );
+  if (loading && !refreshing) return <ShimmerLoader />;
 
   return (
     <SafeAreaView style={styles.container}>
-      <FlatList
-        data={Object.keys(groupedData)}
-        keyExtractor={item => item}
-        renderItem={renderSection}
-        ListHeaderComponent={
+      <StatusBar barStyle="dark-content" />
+
+      {/* Neo-Bank Header */}
+      <View style={styles.header}>
+        <View>
+          <RegularText style={styles.balanceLabel}>
+            Available Balance
+          </RegularText>
           <Pressable
             onPress={() => setShowBalance(!showBalance)}
-            style={styles.balanceContainer}>
-            <RegularText color={Colors.grayColor} fontSize={13}>
-              {showBalance ? 'Hide Balance' : 'Show Balance'}
-            </RegularText>
-            <BoldText color={Colors.grayColor} fontSize={32}>
+            style={styles.balanceRow}
+          >
+            <BoldText style={styles.balanceAmount}>
               {showBalance
                 ? `₦${accountDetailsBank.toLocaleString()}`
-                : '₦******'}
+                : '₦ • • • • •'}
             </BoldText>
           </Pressable>
+        </View>
+        {/* <Pressable
+          style={styles.withdrawCircle}
+          onPress={() =>
+            navigation.navigate('WithdrawPage', {
+              balancePassed: accountDetailsBank,
+            })
+          }
+        >
+          <BoldText style={styles.withdrawCircleText}>Send</BoldText>
+        </Pressable> */}
+      </View>
+
+      {/* Segmented Control */}
+      <View style={styles.tabWrapper}>
+        <View style={styles.tabBg}>
+          {(['earnings', 'withdrawals'] as const).map(tab => (
+            <Pressable
+              key={tab}
+              onPress={() => setActiveTab(tab)}
+              style={[
+                styles.tabButton,
+                activeTab === tab && styles.tabButtonActive,
+              ]}
+            >
+              <MediumText
+                style={[
+                  styles.tabText,
+                  activeTab === tab && styles.tabTextActive,
+                ]}
+              >
+                {tab === 'earnings' ? 'Income' : 'Outflow'}
+              </MediumText>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <SectionList
+        sections={sections}
+        keyExtractor={item => item._id}
+        renderItem={renderItem}
+        stickySectionHeadersEnabled={false}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        renderSectionHeader={({ section: { title } }) => (
+          <RegularText style={styles.sectionTitle}>{title}</RegularText>
+        )}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={fetchData} />
         }
         ListEmptyComponent={
-          loading || refreshing ? (
-            <ActivityIndicator
-              size="large"
-              color={Colors.primaryColor}
-              style={styles.loader}
-            />
-          ) : (
-            <RegularText style={styles.emptyText}>No records found</RegularText>
-          )
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={fetchData}
-            tintColor={Colors.primaryColor}
-          />
+          <RegularText style={styles.emptyText}>
+            No transactions this period
+          </RegularText>
         }
       />
 
-      <Modal visible={modalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <BoldText style={styles.modalTitle}>
-              {' '}
-              -₦{selectedWithdrawal?.amount?.toLocaleString()}
-            </BoldText>
-
-            <View style={styles.modalRow}>
-              <RegularText style={styles.modalLabel}>Account Name:</RegularText>
-              <BoldText style={styles.modalValue}>
-                {selectedWithdrawal?.accountName}
+      {/* Transaction Modal */}
+      <Modal visible={modalVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.handle} />
+            <MediumText style={styles.modalHeader}>
+              Transaction Details
+            </MediumText>
+            <View style={styles.modalMain}>
+              <BoldText style={styles.modalAmount}>
+                -₦{selectedWithdrawal?.amount?.toLocaleString()}
               </BoldText>
-            </View>
-
-            <View style={styles.modalRow}>
-              <RegularText style={styles.modalLabel}>Status:</RegularText>
-              <BoldText style={styles.modalValue}>
-                {selectedWithdrawal?.status}
-              </BoldText>
-            </View>
-
-            <View style={styles.modalRow}>
-              <RegularText style={styles.modalLabel}>
-                Account Number:
+              <RegularText style={{ color: '#666' }}>
+                Withdrawal to Bank
               </RegularText>
-              <BoldText style={styles.modalValue}>
-                {selectedWithdrawal?.accountNumber}
-              </BoldText>
             </View>
-
-            <View style={styles.modalRow}>
-              <RegularText style={styles.modalLabel}>Bank:</RegularText>
-              <BoldText style={styles.modalValue}>
-                {selectedWithdrawal?.bank}
-              </BoldText>
-            </View>
-
-            <View style={styles.modalRow}>
-              <RegularText style={styles.modalLabel}>
-                Date of Transfer
-              </RegularText>
-              <BoldText style={styles.modalValue}>
-                {formatDate(selectedWithdrawal?.createdAt)}
-              </BoldText>
-            </View>
-
-            <View style={{marginVertical: 16, marginBottom: 48}}>
+            <View style={styles.divider} />
+            <DetailRow
+              label="Recipient Bank"
+              value={selectedWithdrawal?.bank}
+            />
+            <DetailRow
+              label="Account Number"
+              value={selectedWithdrawal?.accountNumber}
+            />
+            <DetailRow
+              label="Status"
+              value={selectedWithdrawal?.status}
+              isStatus
+            />
+            <View style={{ marginTop: 30 }}>
               <CustomButton
-                title="Close"
+                title="Done"
                 onPress={() => setModalVisible(false)}
-                backgroundColors={Colors.errorColor}
               />
             </View>
           </View>
@@ -319,91 +254,114 @@ const Earnings: React.FC = () => {
   );
 };
 
+const DetailRow = ({ label, value, isStatus }: any) => (
+  <View style={styles.detailRow}>
+    <RegularText style={{ color: '#888' }}>{label}</RegularText>
+    <MediumText style={{ color: isStatus ? '#2E7D32' : '#1A1A1A' }}>
+      {value}
+    </MediumText>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  loader: {
-    marginTop: 20,
-    alignSelf: 'center',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: Colors.whiteColorF4,
-  },
-  balanceContainer: {
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-    marginTop: 8,
-    padding: 16,
-    paddingTop: 48,
-  },
-  logItem: {
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  header: {
     flexDirection: 'row',
-    backgroundColor: Colors.whiteColor,
-    borderRadius: 16,
-    marginVertical: 4,
-    marginHorizontal: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 16,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 25,
   },
-  logTextContainer: {
+  balanceLabel: { color: '#888', fontSize: 13, marginBottom: 4 },
+  balanceRow: { flexDirection: 'row', alignItems: 'center' },
+  balanceAmount: { fontSize: 32, letterSpacing: -1 },
+  withdrawCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#1A1A1A',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  withdrawCircleText: { color: '#FFF', fontSize: 12 },
+  tabWrapper: { paddingHorizontal: 20, marginBottom: 20 },
+  tabBg: {
+    flexDirection: 'row',
+    backgroundColor: '#F5F5F7',
+    borderRadius: 14,
+    padding: 4,
+  },
+  tabButton: {
     flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 10,
   },
-  logDate: {
+  tabButtonActive: {
+    backgroundColor: '#FFF',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+  },
+  tabText: { color: '#888', fontSize: 14, textTransform: 'capitalize' },
+  tabTextActive: { color: '#1A1A1A' },
+  sectionTitle: {
     fontSize: 12,
-    color: Colors.grayColor,
+    color: '#BBB',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    paddingHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 10,
   },
-  logDescription: {
-    fontSize: 18,
-    color: Colors.grayColor,
+  transactionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
   },
-  monthHeader: {
-    fontSize: 13,
-    color: Colors.textColor,
-    marginTop: 8,
-    marginLeft: 12,
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  listContainer: {
+  transactionDetails: { flex: 1, marginLeft: 15 },
+  transactionTitle: { fontSize: 15, color: '#1A1A1A' },
+  transactionDate: { fontSize: 12, color: '#AAA', marginTop: 2 },
+  amountContainer: { alignItems: 'flex-end', flexDirection: 'row', gap: 8 },
+  amountText: { fontSize: 15 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    padding: 25,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#EEE',
+    alignSelf: 'center',
+    borderRadius: 2,
     marginBottom: 20,
   },
-  emptyText: {
-    textAlign: 'center',
-    color: Colors.grayColor,
-    marginTop: 20,
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    padding: 16,
-    width: '100%',
-    minHeight: 300,
-  },
-  modalTitle: {
-    fontSize: 24,
-    marginBottom: 10,
-    marginVertical: 16,
-    textAlign: 'right',
-    color: Colors.errorColor,
-  },
-  modalRow: {
+  modalHeader: { textAlign: 'center', fontSize: 16, color: '#888' },
+  modalMain: { alignItems: 'center', marginVertical: 30 },
+  modalAmount: { fontSize: 36, letterSpacing: -1 },
+  divider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: 20 },
+  detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '100%',
-    marginVertical: 8,
+    marginBottom: 15,
   },
-  modalLabel: {
-    flex: 1,
-    textAlign: 'left',
-    fontSize: 13,
-  },
-  modalValue: {
-    flex: 1,
-    textAlign: 'right',
-    fontSize: 13,
-  },
+  emptyText: { textAlign: 'center', marginTop: 40, color: '#CCC' },
 });
 
 export default Earnings;

@@ -1,20 +1,21 @@
-import React, {useEffect, useState, useCallback} from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
   Linking,
   TouchableOpacity,
+  StatusBar,
+  Platform,
 } from 'react-native';
-import {useNavigation} from '@react-navigation/native';
-import {useDispatch} from 'react-redux';
-import {Colors} from '../../Components/Colors/Colors';
-import {getUserProfile} from '../../Redux/User/userSlice';
+import { useNavigation } from '@react-navigation/native';
+import { useDispatch } from 'react-redux';
+import { Colors } from '../../Components/Colors/Colors';
+import { getUserProfile } from '../../Redux/User/userSlice';
 import ShimmerLoader from '../../Components/Loader/ShimmerLoader';
-import CustomButton from '../../Components/Buttons/CustomButton';
 import FastImage from 'react-native-fast-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {useTokens} from '../../Context/TokenProvider';
+import { useTokens } from '../../Context/TokenProvider';
 import ModalComponent from '../../Components/Modal/ModalComponent';
 import profileImageAsset from '../../../assets/images/static/profilepics.png';
 import {
@@ -23,51 +24,47 @@ import {
   SemiBoldText,
 } from '../../Components/Texts/CustomTexts/BaseTexts';
 import NigeriaFlagSvg from '../../Components/Flags/NigeriaFlag';
-import ProfileMenuItem from './ProfileMenuItem'; // Import the new component
-import {CompanyName} from '../../CompanyName';
-import {AppDispatch} from '../../Redux/Store';
-import {WEB_BASE_URL} from '../../Redux/baseurl'; // Ensure this path is correct
+import ProfileMenuItem from './ProfileMenuItem';
+import { CompanyName } from '../../CompanyName';
+import { AppDispatch } from '../../Redux/Store';
+import { WEB_BASE_URL } from '../../Redux/baseurl';
 
 export const formatName = (name: string | undefined | null) => {
   if (!name) return '';
   return name
     .toLowerCase()
-    .split(/[- ]/) // Split by hyphen or space
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1)) // Capitalize each part
-    .join(' '); // Rejoin with a space
+    .split(/[- ]/)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 };
 
 const UserProfile: React.FC = () => {
   const navigation = useNavigation();
   const dispatch = useDispatch<AppDispatch>();
   const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
-  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
-  const [localProfile, setLocalProfile] = useState<any>(null); // Use 'any' or define a proper type for localProfile
+  const [localProfile, setLocalProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const { clearTokens } = useTokens();
 
-  const {clearTokens} = useTokens();
-
-  // Define profile navigation items (now includes type for external links)
   const profileNavigationMap = [
     {
       label: 'Our Policies',
       screen: `${WEB_BASE_URL}/app/driver/privacy-policy`,
-      type: 'external' as const, // Explicitly type as 'external'
+      type: 'external' as const,
     },
     {
       label: 'Terms of Use',
       screen: `${WEB_BASE_URL}/app/driver/terms-of-use`,
-      type: 'external' as const, // Explicitly type as 'external'
+      type: 'external' as const,
     },
   ];
 
   const fetchUserProfile = useCallback(async () => {
     try {
-      const response = await dispatch(getUserProfile()).unwrap(); // Use unwrap for direct payload access
+      const response = await dispatch(getUserProfile()).unwrap();
       setLocalProfile(response);
     } catch (error) {
-      console.error('Error fetching user profile:', error);
-      // Optionally handle error state here
+      console.error('Profile fetch error:', error);
     } finally {
       setLoading(false);
     }
@@ -75,167 +72,156 @@ const UserProfile: React.FC = () => {
 
   useEffect(() => {
     fetchUserProfile();
-  }, [fetchUserProfile]); // Dependency on fetchUserProfile
-
-  const formattedFirstName = formatName(localProfile?.firstName);
-  const formattedLastName = formatName(localProfile?.lastName);
-
-  if (loading) {
-    return <ShimmerLoader />;
-  }
+  }, [fetchUserProfile]);
 
   const confirmLogout = async () => {
     try {
-      await AsyncStorage.removeItem('accessToken');
-      await AsyncStorage.removeItem('refreshToken');
-      await AsyncStorage.removeItem('userData');
+      await AsyncStorage.multiRemove([
+        'accessToken',
+        'refreshToken',
+        'userData',
+        'normalPushTokenRegistered',
+      ]);
       clearTokens();
-      console.log('Tokens cleared from storage and context.');
-      // You might want to navigate to a login screen here
     } catch (error) {
-      console.error('Error during logout:', error);
+      console.error('Logout error:', error);
     } finally {
       setIsLogoutModalVisible(false);
     }
   };
 
-  // For delete account, you'd typically have a separate API call
-  const confirmDeleteAccount = async () => {
-    try {
-      // Implement your account deletion logic here (e.g., API call)
-      console.log('Attempting to delete account...');
-      // After successful deletion, clear tokens and navigate
-      await AsyncStorage.removeItem('accessToken');
-      await AsyncStorage.removeItem('refreshToken');
-      await AsyncStorage.removeItem('userData');
-      clearTokens();
-      console.log('Account deleted and tokens cleared.');
-      // Navigate to login/onboarding screen
-    } catch (error) {
-      console.error('Error during account deletion:', error);
-    } finally {
-      setIsDeleteModalVisible(false);
-    }
-  };
+  if (loading) return <ShimmerLoader />;
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
       <ScrollView
-        contentContainerStyle={styles.scrollViewContent} // Renamed for clarity
-        showsVerticalScrollIndicator={false}>
-        <View style={{padding: 16}}>
-          <BoldText style={{fontSize: 24, marginTop: 32, padding: 0}}>
-            Profile
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header Section */}
+        <View style={styles.header}>
+          <BoldText fontSize={24} color={Colors.headerColor}>
+            Account
           </BoldText>
+          <RegularText color={Colors.grayColor}>
+            Personalize your experience
+          </RegularText>
         </View>
-        <View
-          style={{
-            padding: 12,
-            backgroundColor: Colors.whiteColorF4,
-            marginTop: -24,
-            paddingVertical: 24,
-            gap: 10,
-            paddingTop: 12,
-          }}>
-          <View style={styles.viewbg}>
-            <TouchableOpacity
-              style={{
-                backgroundColor: Colors.fadedPrimaryColor,
-                borderRadius: 1200,
-                alignSelf: 'flex-start',
-                marginTop: 16,
-              }}>
+
+        {/* User Info Card */}
+        <View style={styles.profileCard}>
+          <View style={styles.profileHeaderRow}>
+            <View style={styles.imageContainer}>
               <FastImage
-                source={profileImageAsset} // Directly use the imported image
-                style={styles.profileImage}
-                resizeMode={FastImage.resizeMode.cover} // Use FastImage's resizeMode
+                source={
+                  localProfile?.imageUrl
+                    ? { uri: localProfile?.imageUrl }
+                    : profileImageAsset
+                }
+                style={styles.avatar}
+                resizeMode={FastImage.resizeMode.cover}
               />
-            </TouchableOpacity>
-            <View style={{alignItems: 'flex-start', marginVertical: 16}}>
+              <View style={styles.activeIndicator} />
+            </View>
+
+            <View style={styles.nameSection}>
               <SemiBoldText fontSize={18} color={Colors.headerColor}>
-                {formatName(formattedFirstName)} {formatName(formattedLastName)}
+                {formatName(localProfile?.firstName)}{' '}
+                {formatName(localProfile?.lastName)}
               </SemiBoldText>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  gap: 2,
-                  alignItems: 'center',
-                  borderRadius: 48,
-                  marginVertical: 2,
-                }}>
-                <View style={styles.nigeriaflag}>
+              <View style={styles.phoneRow}>
+                <View style={styles.flagWrapper}>
                   <NigeriaFlagSvg />
                 </View>
-                <View style={{flexWrap: 'wrap'}}>
-                  <RegularText fontSize={15}>
-                    {localProfile?.countryCode}
-                    {localProfile?.phoneNumber}
-                  </RegularText>
-                </View>
+                <RegularText color={Colors.grayColor} fontSize={15}>
+                  {localProfile?.countryCode} {localProfile?.phoneNumber}
+                </RegularText>
               </View>
-
-              <CustomButton
-                marginTop={12}
-                textColor={Colors.grayColor}
-                backgroundColors={Colors.grayColorFaded}
-                title="Apply to edit your profile details"
-                onPress={() => Linking.openURL('https://www.pickars.com')}
-              />
             </View>
+          </View>
+
+          {/* Tip Box (The section that had the error) */}
+          <View style={styles.tipBox}>
+            <BoldText
+              fontSize={12}
+              color={Colors.primaryColor}
+              style={{ marginBottom: 4 }}
+            >
+              💡 PRO TIP
+            </BoldText>
+            <RegularText fontSize={13} color={Colors.headerColor}>
+              Keeping your contact details up to date ensures customers can
+              reach you during deliveries.
+            </RegularText>
+          </View>
+
+          <TouchableOpacity
+            style={styles.editRequestBtn}
+            onPress={() => Linking.openURL('https://www.pickars.com')}
+          >
+            <SemiBoldText fontSize={14} color={Colors.primaryColor}>
+              Request Profile Update
+            </SemiBoldText>
+          </TouchableOpacity>
+        </View>
+
+        {/* Settings Menu */}
+        <View style={styles.menuSection}>
+          <View style={styles.menuLabel}>
+            <SemiBoldText fontSize={13} color={Colors.grayColor}>
+              LEGAL & SECURITY
+            </SemiBoldText>
+          </View>
+
+          <View style={styles.menuGroup}>
+            {profileNavigationMap.map((item, index) => (
+              <ProfileMenuItem
+                key={index}
+                label={item.label}
+                screen={item.screen}
+                type={item.type}
+                style={
+                  index !== profileNavigationMap.length - 1 &&
+                  styles.borderBottom
+                }
+              />
+            ))}
+
+            <ProfileMenuItem
+              label="Sign Out"
+              onPress={() => setIsLogoutModalVisible(true)}
+              textColor={Colors.errorColor}
+            />
           </View>
         </View>
 
-        {/* Render profile navigation items using the new component */}
-        <View style={styles.menuItemsContainer}>
-          {profileNavigationMap.map((item, index) => (
-            <ProfileMenuItem
-              key={index}
-              label={item.label}
-              screen={item.screen}
-              type={item.type}
-            />
-          ))}
-
-          <ProfileMenuItem
-            label="Logout"
-            onPress={() => setIsLogoutModalVisible(true)}
-          />
-
-          {/* <ProfileMenuItem
-            label="Delete Account"
-            onPress={() => setIsDeleteModalVisible(true)}
-            textColor={Colors.errorColor}
-            iconColor={Colors.errorColor}
-          /> */}
+        {/* Helpful Hint */}
+        <View style={styles.hintContainer}>
+          <RegularText style={styles.hintText}>
+            Need to change your vehicle or bank details? Contact support through
+            the Policies section.
+          </RegularText>
         </View>
 
         <View style={styles.footer}>
-          <RegularText fontSize={16}>
-            {CompanyName} Courier Limited
+          <BoldText fontSize={14} color={Colors.headerColor}>
+            {CompanyName}
+          </BoldText>
+          <RegularText fontSize={11} color={Colors.grayColor}>
+            v1.0.4 • Build 2026
           </RegularText>
         </View>
       </ScrollView>
 
-      {/* Logout Modal */}
       <ModalComponent
         visible={isLogoutModalVisible}
         onClose={() => setIsLogoutModalVisible(false)}
         onConfirm={confirmLogout}
-        title="Confirm you want to Logout"
-        message="Are you sure you want to log out?"
-        cancelText="No, Cancel"
-        confirmText="Log Out"
-      />
-
-      {/* Delete Account Modal */}
-      <ModalComponent
-        visible={isDeleteModalVisible}
-        onClose={() => setIsDeleteModalVisible(false)}
-        onConfirm={confirmDeleteAccount} // Use specific delete confirm function
-        title="Confirm you want to Delete your Account"
-        message="Are you sure you want to Delete your Account? This action cannot be undone."
-        cancelText="No, Cancel"
-        confirmText="Delete"
+        title="Sign Out"
+        message="Your active sessions will be closed. Continue?"
+        confirmText="Yes, Sign Out"
+        cancelText="Stay Logged In"
       />
     </View>
   );
@@ -244,104 +230,117 @@ const UserProfile: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.whiteColorF4,
-    paddingTop: 48, // Adjust as per your SafeAreaView or header needs
+    backgroundColor: '#FFFFFF',
   },
-  scrollViewContent: {
-    flexGrow: 1,
-    backgroundColor: Colors.whiteColorF4,
-  },
-  headerContainer: {
-    padding: 16,
-    paddingBottom: 0, // Adjust spacing
-  },
-  headerTitle: {
-    fontSize: 24,
-    margin: 0,
-    padding: 0,
-  },
-  profileInfoCard: {
-    padding: 12,
-    backgroundColor: Colors.whiteColor,
-    marginTop: 12, // Adjusted from -24
-    borderRadius: 24, // Consistent with other cards
-    flexDirection: 'column',
-    alignItems: 'center', // Center content horizontally
-    paddingVertical: 24,
-  },
-  profileImageContainer: {
-    backgroundColor: Colors.fadedPrimaryColor,
-    borderRadius: 1200,
-    // alignSelf: 'flex-start', // Removed as content is centered
-    marginTop: 0, // Adjusted
-  },
-  profileImage: {
-    width: 96,
-    height: 96,
-    borderRadius: 48, // Half of width/height for perfect circle
-  },
-  profileTextDetails: {
-    alignItems: 'center', // Center text details
-    marginVertical: 16,
-  },
-  phoneNumberContainer: {
-    flexDirection: 'row',
-    gap: 2,
-    alignItems: 'center',
-    borderRadius: 48,
-    marginVertical: 2,
-  },
-  nigeriaFlag: {
-    flexDirection: 'row',
-    gap: 4,
-    alignItems: 'center',
-    backgroundColor: Colors.greenColorFaded,
-    padding: 8,
-    alignSelf: 'flex-start',
-    borderRadius: 48,
-    paddingHorizontal: 8,
-  },
-  menuItemsContainer: {
-    paddingHorizontal: 12,
-    marginTop: -12, // Adjusted from -12
-    borderRadius: 24,
-    flexDirection: 'column',
-  },
-  footer: {
-    marginVertical: 48,
-    alignSelf: 'center',
-  },
-
-  nigeriaflag: {
-    flexDirection: 'row',
-    gap: 4,
-    alignItems: 'center',
-    backgroundColor: Colors.greenColorFaded,
-    padding: 8,
-    alignSelf: 'flex-start',
-    borderRadius: 48,
-    paddingHorizontal: 8,
-  },
-  scrollView: {
-    flexGrow: 1,
-    // justifyContent: 'center',
-    backgroundColor: Colors.whiteColorF4,
+  scrollContent: {
+    paddingBottom: 40,
   },
   header: {
-    fontSize: 20,
-    marginBottom: 20,
+    paddingHorizontal: 24,
+    paddingTop: Platform.OS === 'ios' ? 70 : 50,
+    paddingBottom: 24,
   },
-  viewbg: {
-    padding: 12,
-    backgroundColor: Colors.whiteColor,
-    marginTop: -0,
-    borderRadius: 24,
-    flexDirection: 'column',
+  profileCard: {
+    backgroundColor: '#FAFAFA',
+    marginHorizontal: 20,
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1.5,
+    borderColor: '#F0F0F0',
   },
-
-  // Removed unused styles: container, header, subHeader, textLabel, button, buttonText,
-  // walletToggle, walletBalance, input, modalContainer, modalContent, modalTitle,
-  // modalButtons, deleteButton, cancelButton as they are now handled by ModalComponent or ProfileMenuItem
+  profileHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  imageContainer: {
+    position: 'relative',
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: Colors.fadedPrimaryColor,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  activeIndicator: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#00C853',
+    borderWidth: 3,
+    borderColor: '#FAFAFA',
+  },
+  nameSection: {
+    marginLeft: 18,
+    flex: 1,
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  flagWrapper: {
+    width: 22,
+    height: 15,
+    marginRight: 10,
+  },
+  tipBox: {
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primaryColor,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  editRequestBtn: {
+    marginTop: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.primaryColor,
+    borderStyle: 'dashed',
+  },
+  menuSection: {
+    marginTop: 36,
+    paddingHorizontal: 20,
+  },
+  menuLabel: {
+    marginBottom: 10,
+    marginLeft: 4,
+  },
+  menuGroup: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: '#F0F0F0',
+  },
+  borderBottom: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
+  },
+  hintContainer: {
+    paddingHorizontal: 40,
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  hintText: {
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#999',
+    lineHeight: 18,
+  },
+  footer: {
+    marginTop: 60,
+    alignItems: 'center',
+  },
 });
 
 export default UserProfile;

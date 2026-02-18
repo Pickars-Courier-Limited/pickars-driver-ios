@@ -14,6 +14,7 @@ interface UserProfile {
   email?: any
   phoneNumber?: any
   promoCode?: any
+  active?: boolean;
 }
 
 interface UserState {
@@ -343,6 +344,68 @@ export const verifyAccount = createAsyncThunk<AuthResponse, { phoneNumber: strin
   }
 );
 
+export const updateRiderLocation = createAsyncThunk<
+  UserProfile,
+  { id: string; latitude: number; longitude: number; address?: string },
+  { rejectValue: string }
+>(
+  'user/updateRiderLocation',
+  async (payload, { rejectWithValue }) => {
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('No access token found');
+      }
+
+      const response = await axios.put(
+        `${BaseUrl}/api/v1/user/riders/update-rider-location`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      const errorMessage = await handleUnauthorizedError(error);
+      return rejectWithValue(errorMessage);
+    }
+  }
+);
+
+export const toggleRiderActiveStatus = createAsyncThunk<UserProfile, boolean, { rejectValue: string }>(
+  'user/toggleRiderActiveStatus',
+  async (activeStatus: boolean, { rejectWithValue }) => {
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('No access token found');
+      }
+      console.error("🔍 Full response object:", token);
+      // The backend endpoint for updating the profile is used to change the active status.
+      const response = await axios.put(
+        `${BaseUrl}/api/v1/user/riders/toggle-rider-active-status`,
+        { active: activeStatus },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+     
+      return response.data;
+    } catch (error) {
+      const errorMessage = await handleUnauthorizedError(error);
+      return rejectWithValue(errorMessage);
+    }
+  }
+);
+
+
 const userSlice = createSlice({
   name: 'user',
   initialState,
@@ -489,6 +552,35 @@ const userSlice = createSlice({
       })
       .addCase(fetchWithdrawals.rejected, (state) => {
         state.loading = false;
+      });
+
+    builder
+      .addCase(updateRiderLocation.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(updateRiderLocation.fulfilled, (state, action: PayloadAction<UserProfile>) => {
+        state.loading = false;
+        state.profile = action.payload;
+        state.success = 'Rider location updated successfully';
+      })
+      .addCase(updateRiderLocation.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || 'Failed to update rider location';
+      });
+
+    // Handle the new thunk for toggling active status
+    builder
+      .addCase(toggleRiderActiveStatus.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(toggleRiderActiveStatus.fulfilled, (state, action: PayloadAction<UserProfile>) => {
+        state.loading = false;
+        state.profile = action.payload.rider; // The API response returns an object with a 'rider' key
+        state.success = 'Rider active status updated successfully';
+      })
+      .addCase(toggleRiderActiveStatus.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || 'Failed to toggle rider active status';
       });
 
   },

@@ -24,8 +24,13 @@ target 'PickarsDrivers' do
     :hermes_enabled => true
   )
 
+  rn_maps_path = '../node_modules/react-native-maps'
+  pod 'react-native-maps/Google', :path => rn_maps_path
+
+  
   # ✅ Add RNCPushNotificationIOS manually
   pod 'RNCPushNotificationIOS', :path => '../node_modules/@react-native-community/push-notification-ios'
+  pod 'GoogleMaps'
 
   post_install do |installer|
     react_native_post_install(

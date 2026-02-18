@@ -1,15 +1,14 @@
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View,
-  Text,
-  ActivityIndicator,
   StyleSheet,
   ScrollView,
   RefreshControl,
   SafeAreaView,
   TouchableOpacity,
-  Pressable,
   Linking,
-  Alert,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { useDispatch } from 'react-redux';
 import {
@@ -17,573 +16,435 @@ import {
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
-import Clipboard from '@react-native-clipboard/clipboard';
 
 import { useSocket } from '../../Context/useSocket';
+import { AppDispatch } from '../../Redux/store';
+import { fetchRideById } from '../../Redux/Riders/riders';
 
 import MessageIcon from '../../Components/Icons/MessageIcon/MessageIcon';
 import PhoneCallIcon from '../../Components/Icons/PhoneCall/PhoneCallIcon';
+
 import {
   BoldText,
   MediumText,
   RegularText,
   SemiBoldText,
 } from '../../Components/Texts/CustomTexts/BaseTexts';
-import IconsContainer from '../../Components/Icons/IconContainer';
-import BikeLogoIcon from '../../Components/Icons/Logo/LogoIcon';
-import { Image } from 'react-native';
-import { AppDispatch } from '../../Redux/Store';
-import { useCallback, useEffect, useState } from 'react';
-import { fetchRideById } from '../../Redux/Riders/riders';
 import AuthHeaders from '../../Components/Headers/AuthHeaders';
 import ErrorComponent from '../../Components/ErrorComponent/ErrorComponent';
 import ShimmerLoader from '../../Components/Loader/ShimmerLoader';
 import RideStatusAndActions from './RideStatusAndActions';
+import UserLocationMap from '../Home/UserLocationMap'; // New Restyled Map
+
 import { formatDate } from '../Support/Messages/MessageSupport';
 import { formatName } from '../../Components/Headers/MessageHeaders';
 import { Colors } from '../../Components/Colors/Colors';
 
-// --- New CustomerContactInfo Component ---
-interface CustomerContactInfoProps {
-  customerName: string;
-  customerPhoneNumber: string;
-  pickupCode?: string;
-  onCall: (phoneNumber: string) => void;
-  onMessage: () => void;
-  // Added new props for dynamic icon colors
-  iconBackgroundColor: string;
-  iconColor: string;
-}
+// ────────────────────────────────────────────────────────────────────
+// REUSABLE SUB-COMPONENTS
+// ────────────────────────────────────────────────────────────────────
 
-const CustomerContactInfo = ({
-  customerName,
-  customerPhoneNumber,
-  pickupCode,
-  onCall,
-  onMessage,
-  iconBackgroundColor, // Destructure new prop
-  iconColor, // Destructure new prop
-}: CustomerContactInfoProps) => {
-  return (
-    <View style={customerContactStyles.container}>
-      <SemiBoldText fontSize={16} color={Colors.headerColor}>
-        {formatName(customerName)}
-      </SemiBoldText>
-      {pickupCode && (
-        <BoldText fontSize={16} color={Colors.grayColor}>
-          Pickup Code: {pickupCode}
-        </BoldText>
-      )}
-
-      <View style={customerContactStyles.buttonsContainer}>
-        <Pressable onPress={onMessage}>
-          <IconsContainer
-            backgroundColor={iconBackgroundColor} // Use dynamic background color
-            IconComponent={MessageIcon}
-            iconColor={iconColor} // Use dynamic icon color
-            iconWidth={24}
-            iconHeight={24}
-            padding={32}
-            onPress={() => onCall(customerPhoneNumber)} // This onPress is redundant if parent Pressable handles it
-          />
-        </Pressable>
-
-        <Pressable onPress={() => onCall(customerPhoneNumber)}>
-          <IconsContainer
-            backgroundColor={iconBackgroundColor} // Use dynamic background color
-            IconComponent={PhoneCallIcon}
-            iconColor={iconColor} // Use dynamic icon color
-            iconWidth={24}
-            iconHeight={24}
-            padding={32}
-            onPress={() => onCall(customerPhoneNumber)} // This onPress is redundant if parent Pressable handles it
-          />
-        </Pressable>
-      </View>
+const PaymentStatusBadge = ({
+  isPaid,
+  method,
+}: {
+  isPaid: boolean;
+  method?: string;
+}) => (
+  <View style={[styles.paymentBadge, isPaid ? styles.paidBg : styles.unpaidBg]}>
+    <View
+      style={[
+        styles.statusDotSmall,
+        { backgroundColor: isPaid ? '#10B981' : '#F59E0B' },
+      ]}
+    />
+    <View>
+      <BoldText
+        style={[styles.paymentText, { color: isPaid ? '#065F46' : '#92400E' }]}
+      >
+        {isPaid ? 'PAYMENT RECEIVED' : 'PENDING PAYMENT'}
+      </BoldText>
+      {method && <RegularText style={styles.methodText}>{method}</RegularText>}
     </View>
-  );
-};
+  </View>
+);
 
-const customerContactStyles = StyleSheet.create({
-  container: {
-    backgroundColor: Colors.whiteColor,
-    // padding: 16,
-    // borderRadius: 12,
-    // marginHorizontal: 12,
-    // marginTop: 16,
-  },
-  buttonsContainer: {
-    flexDirection: 'row',
-    marginTop: 16,
-    gap: 12,
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 8,
-    backgroundColor: Colors.whiteColorF4,
-    borderWidth: 1,
-    borderColor: Colors.lightGrayColor,
-  },
-  buttonText: {
-    color: Colors.headerColor,
-    fontSize: 14,
-  },
-});
+const SectionLabel = ({ title, color }: { title: string; color: string }) => (
+  <View style={styles.sectionLabelRow}>
+    <View style={[styles.labelDot, { backgroundColor: color }]} />
+    <BoldText style={styles.labelText}>{title}</BoldText>
+  </View>
+);
+
+// ────────────────────────────────────────────────────────────────────
+// MAIN SCREEN
+// ────────────────────────────────────────────────────────────────────
 
 const RideDetailScreen = () => {
-  const route = useRoute();
-  const { rideId, userId } = route.params;
+  const route = useRoute<any>();
+  const { rideId, userId } = route.params ?? {};
   const dispatch = useDispatch<AppDispatch>();
   const { socket } = useSocket();
-  const [rideDetails, setRideDetails] = useState(null);
+  const navigation = useNavigation<any>();
+  const scrollRef = useRef<ScrollView>(null);
+
+  const [ride, setRide] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [isButtonDisabled, setIsButtonDisabled] = useState(false);
-  const navigation = useNavigation();
+  const [actionLoading, setActionLoading] = useState(false);
 
-  console.log(userId, 'hjdriverIddriverId');
-
-  const fetchRideDetails = async () => {
+  const loadRide = useCallback(async () => {
     try {
       const result = await dispatch(fetchRideById(rideId)).unwrap();
-      if (result.success === true) {
-        setRideDetails(result.data);
-        console.log(result.data);
-      }
-    } catch (err) {
-      setError(err.message || 'Failed to fetch ride details');
+      if (result.success) setRide(result.data);
+    } catch (err: any) {
+      setError(err.message || 'Details unavailable');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [dispatch, rideId]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchRideDetails();
-    }, [rideId]),
+      loadRide();
+    }, [loadRide]),
   );
 
   useEffect(() => {
-    if (!userId || !socket) return;
-
+    if (!socket || !userId) return;
     socket.emit('joinDriver', userId);
-
-    socket.on('riderJoined', (messageData: any) => {
-      console.log(messageData, 'messageData');
-      setError(messageData.error);
-    });
-
     return () => {
       socket.off('riderJoined');
     };
-  }, [userId, socket]);
+  }, [socket, userId]);
 
-  const handleAction = (action: string) => {
-    if (!socket) {
-      console.error(`Unable to ${action}: Missing socket or ride data.`);
-      return;
-    }
+  const handleRideAction = (action: string) => {
+    if (!socket || actionLoading) return;
+    setActionLoading(true);
+    socket.emit(action, { rideId, driverId: userId, ride, [action]: true });
 
-    setIsButtonDisabled(true);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
 
-    const payload = {
-      rideId: rideId,
-      driverId: userId,
-      ride: rideDetails,
-      [action]: true,
-    };
-
-    console.log(`${action} with payload:`, payload);
-
-    socket.emit(action, payload);
-
-    setTimeout(async () => {
-      setIsButtonDisabled(false);
-      await fetchRideDetails();
-    }, 6000);
+    setTimeout(() => {
+      setActionLoading(false);
+      loadRide();
+    }, 3000);
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchRideDetails();
-    setRefreshing(false);
-  };
-
-  if (loading) {
+  if (loading)
     return (
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeAreaView style={styles.safeArea}>
         <ShimmerLoader />
       </SafeAreaView>
     );
-  }
-
-  if (error) {
+  if (error || !ride)
     return (
-      <View>
-        <ErrorComponent
-          errorMessage="Can not Retrieve Ride Details for this ride at the moment"
-          onReload={onRefresh}
-        />
-      </View>
+      <ErrorComponent
+        errorMessage={error ?? 'Ride not found'}
+        onReload={loadRide}
+      />
     );
-  }
 
-  const handleCall = (phoneNumber: string) => {
-    Linking.openURL(`tel:${phoneNumber}`);
-  };
-
-  const copyToClipboard = (text: string, label: string) => {
-    Clipboard.setString(text);
-    Alert.alert('Copied!', `${label} has been copied to your clipboard.`);
-  };
-
-  const customerName = rideDetails?.customer
-    ? `${rideDetails?.customer.firstName} ${rideDetails?.customer.lastName}`
-    : 'N/A';
-  const customerPhoneNumber = rideDetails?.customer?.phoneNumber || 'N/A';
-  const pickupCode = rideDetails?.pickup?.pickupCode || null;
-
-  // Determine ride status and corresponding colors
-  let statusText = 'Ride Accepted'; // Default status
-  let statusBackgroundColor = Colors.primaryColorFaded;
-  let statusTextColor = Colors.primaryColor;
-
-  if (rideDetails?.cancelRide?.isCancelled === true) {
-    statusText = 'Ride Cancelled';
-    statusBackgroundColor = Colors.errorColorFaded;
-    statusTextColor = Colors.errorColor;
-  } else if (rideDetails?.endRide?.isEnded === true) {
-    statusText = 'Ride Ended';
-    statusBackgroundColor = Colors.grayColorFaded;
-    statusTextColor = Colors.grayColor;
-  } else if (
-    rideDetails?.startRide?.isStarted === true &&
-    rideDetails?.endRide?.isEnded === false
-  ) {
-    statusText = 'Ride Ongoing';
-    statusBackgroundColor = Colors.greenColorFaded;
-    statusTextColor = Colors.greenColor;
-  } else {
-    // Ride has not started yet
-    statusText = 'Ride Not Started';
-    statusBackgroundColor = Colors.grayColorFaded;
-    statusTextColor = Colors.grayColor;
-  }
-  // If none of the above, it defaults to 'Ride Accepted' with primary colors
+  const status = ride.endRide?.isEnded
+    ? 'Completed'
+    : ride.startRide?.isStarted
+    ? 'In Transit'
+    : 'Pickup';
 
   return (
-    <View style={{ backgroundColor: Colors.whiteColorF4, flex: 1 }}>
-      <AuthHeaders title="" infoText="" />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" />
+      <AuthHeaders title={`Order #${rideId?.slice(-6).toUpperCase()}`} />
+
       <ScrollView
-        contentContainerStyle={styles.scrollViewContent}
+        ref={scrollRef}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={onRefresh}
-            progressViewOffset={20}
-            colors={[Colors.primaryColor]}
-            progressBackgroundColor="#F1F1F1"
+            onRefresh={() => {
+              setRefreshing(true);
+              loadRide();
+            }}
           />
         }
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {rideDetails ? (
-          <View>
-            {/* Displaying the determined status */}
-            <View
-              style={{
-                backgroundColor: statusBackgroundColor,
-                padding: 8,
-                borderRadius: 12,
-                flexDirection: 'row',
-                justifyContent: 'center',
-                alignItems: 'center',
-                alignSelf: 'center',
-                marginTop: 16,
-                marginBottom: -6,
-              }}
-            >
-              <MediumText style={{ fontSize: 12, color: statusTextColor }}>
-                {statusText}
-              </MediumText>
+        {/* Status & Summary Card */}
+        <View style={styles.topSummaryCard}>
+          <View style={styles.statusHeader}>
+            <View>
+              <BoldText style={styles.statusMainText}>{status}</BoldText>
+              <RegularText style={styles.dateText}>
+                {formatDate(ride.createdAt)}
+              </RegularText>
             </View>
-
-            <View style={styles.detailsContainer}>
-              <BoldText style={styles.sectionTitle} fontSize={24}>
-                Pickup Details
+            <View style={styles.priceContainer}>
+              <BoldText style={styles.currency}>₦</BoldText>
+              <BoldText style={styles.amount}>
+                {ride.totalPrice?.toLocaleString()}
               </BoldText>
+            </View>
+          </View>
 
+          <PaymentStatusBadge
+            isPaid={ride.paid?.isPaid}
+            method={ride.paid?.paymentMethod}
+          />
+        </View>
+
+        {/* --- MAP SECTION (Now uses the Premium Restyled Map) --- */}
+        <View style={styles.mapWrapper}>
+          <UserLocationMap ride={ride} isRideStatus={true} isBig={true} />
+        </View>
+
+        {/* Timeline Flow */}
+        <View style={styles.detailsContainer}>
+          {/* Pickup Section */}
+          <View style={styles.timelineItem}>
+            <View style={styles.timelineLeft}>
               <View
-                style={{
-                  flexDirection: 'row',
-                  gap: 8,
-                  marginTop: 8,
-                  marginBottom: 32,
-                  flexWrap: 'nowrap',
-                }}
-              >
-                <View style={{ flexShrink: 1, overflow: 'hidden' }}>
-                  <SemiBoldText style={styles.detailAddress}>
-                    {rideDetails?.pickup?.pickupAddress}
-                  </SemiBoldText>
-                  <RegularText style={styles.detailRegion}>
-                    {rideDetails?.startRide?.timestamp
-                      ? formatDate(rideDetails?.startRide?.timestamp)
-                      : formatDate(rideDetails?.createdAt)}
-                  </RegularText>
+                style={[
+                  styles.timelineDot,
+                  { backgroundColor: Colors.primaryColor },
+                ]}
+              />
+              <View style={styles.timelineLine} />
+            </View>
+            <View style={styles.timelineRight}>
+              <SectionLabel title="PICKUP FROM" color={Colors.primaryColor} />
+              <SemiBoldText style={styles.addressText}>
+                {ride.pickup?.pickupAddress}
+              </SemiBoldText>
 
-                  <CustomerContactInfo
-                    customerName={customerName}
-                    customerPhoneNumber={customerPhoneNumber}
-                    pickupCode={pickupCode}
-                    onCall={handleCall}
-                    onMessage={() =>
+              <View style={styles.userActionBox}>
+                <View style={{ flex: 1 }}>
+                  <MediumText style={styles.userName}>
+                    {formatName(
+                      ride.customer?.firstName + ' ' + ride.customer?.lastName,
+                    )}
+                  </MediumText>
+                  {ride.pickup?.pickupCode && (
+                    <View style={styles.codeBadge}>
+                      <BoldText style={styles.codeText}>
+                        CODE: {ride.pickup.pickupCode}
+                      </BoldText>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={styles.circleBtn}
+                    onPress={() =>
                       navigation.navigate('ChatPage', {
-                        _id: rideDetails?._id,
-                        driverName: customerName,
-                        imageUrl: rideDetails?.customer?.imageUrl,
-                        phoneNumber: customerPhoneNumber,
+                        _id: ride._id,
+                        driverName: ride.customer?.firstName,
+                        imageUrl: ride.customer?.imageUrl,
                       })
                     }
-                    iconBackgroundColor={statusBackgroundColor} // Pass dynamic background color
-                    iconColor={statusTextColor} // Pass dynamic icon color
-                  />
+                  >
+                    <MessageIcon
+                      color={Colors.headerColor}
+                      width={20}
+                      height={20}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.circleBtn}
+                    onPress={() =>
+                      Linking.openURL(`tel:${ride.customer?.phoneNumber}`)
+                    }
+                  >
+                    <PhoneCallIcon
+                      fill={Colors.headerColor}
+                      width={20}
+                      height={20}
+                    />
+                  </TouchableOpacity>
                 </View>
               </View>
-
-              <BoldText style={{ fontSize: 18 }}>Delivery Locations</BoldText>
-              {rideDetails?.deliveryDropoff?.map((location, index) => (
-                <View
-                  key={index}
-                  style={{
-                    flexDirection: 'row',
-                    gap: 8,
-                    marginTop: 8,
-                    flexWrap: 'nowrap',
-                  }}
-                >
-                  <View style={{ flex: 1, flexShrink: 1 }}>
-                    <RegularText
-                      style={[styles.detailRegion, { marginBottom: 8 }]}
-                    >
-                      {location?.receiverName} ||{' '}
-                      {location?.receiverPhoneNumber}
-                    </RegularText>
-
-                    <SemiBoldText style={styles.detailAddress}>
-                      {location?.deliveryAddress}
-                    </SemiBoldText>
-
-                    {location?.parcelId && (
-                      <Pressable
-                        onPress={() =>
-                          copyToClipboard(location.parcelId, 'Parcel ID')
-                        }
-                        style={{}}
-                      >
-                        <BoldText style={styles.parcelIdText}>
-                          Parcel ID: {location.parcelId}
-                        </BoldText>
-                      </Pressable>
-                    )}
-                    <View
-                      style={{
-                        flexWrap: 'wrap',
-                        flexDirection: 'row',
-                        gap: 8,
-                        marginBottom: 12,
-                      }}
-                    >
-                      {location?.items?.map((item, itemIndex) => (
-                        <View
-                          key={itemIndex}
-                          style={{
-                            backgroundColor: statusBackgroundColor, // This remains primary for items
-                            padding: 8,
-                            borderRadius: 34,
-                          }}
-                        >
-                          <RegularText
-                            style={[
-                              styles.detailRegion,
-                              {
-                                marginBottom: 0,
-                                fontSize: 14,
-                                color: statusTextColor, // This remains primary for items
-                              },
-                            ]}
-                          >
-                            {item?.itemName}
-                          </RegularText>
-                        </View>
-                      ))}
-                    </View>
-
-                    <TouchableOpacity
-                      onPress={() => handleCall(location?.receiverPhoneNumber)}
-                    >
-                      <IconsContainer
-                        backgroundColor={statusBackgroundColor} // Pass dynamic background color
-                        IconComponent={PhoneCallIcon}
-                        iconColor={statusTextColor} // Pass dynamic icon color
-                        iconWidth={24}
-                        iconHeight={24}
-                        padding={32}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-
-              {/* --- Integration of RideStatusAndActions Component --- */}
-              <RideStatusAndActions
-                rideDetails={rideDetails}
-                isButtonDisabled={isButtonDisabled}
-                handleAction={handleAction}
-              />
-              {/* --- End of RideStatusAndActions Integration --- */}
             </View>
-
-            <View
-              style={{
-                height: 160,
-              }}
-            ></View>
           </View>
-        ) : (
-          <RegularText style={styles.noDataText}>
-            No ride details available.
-          </RegularText>
-        )}
+
+          {/* Delivery Section */}
+          {ride.deliveryDropoff?.map((loc: any, idx: number) => (
+            <View key={idx} style={styles.timelineItem}>
+              <View style={styles.timelineLeft}>
+                <View
+                  style={[styles.timelineDot, { backgroundColor: '#FF9800' }]}
+                />
+                {idx !== ride.deliveryDropoff.length - 1 && (
+                  <View style={styles.timelineLine} />
+                )}
+              </View>
+              <View style={styles.timelineRight}>
+                <SectionLabel
+                  title={`DROP-OFF ${
+                    ride.deliveryDropoff.length > 1 ? idx + 1 : ''
+                  }`}
+                  color="#FF9800"
+                />
+                <SemiBoldText style={styles.addressText}>
+                  {loc.deliveryAddress}
+                </SemiBoldText>
+
+                <View style={styles.receiverBox}>
+                  <View style={styles.receiverInfo}>
+                    <MediumText style={styles.receiverName}>
+                      {loc.receiverName}
+                    </MediumText>
+                    <RegularText style={styles.receiverPhone}>
+                      {loc.receiverPhoneNumber}
+                    </RegularText>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() =>
+                      Linking.openURL(`tel:${loc.receiverPhoneNumber}`)
+                    }
+                  >
+                    <PhoneCallIcon
+                      fill={Colors.primaryColor}
+                      width={18}
+                      height={18}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* Action Button Footer */}
+        <View style={styles.actionFooter}>
+          <RideStatusAndActions
+            rideDetails={ride}
+            isButtonDisabled={actionLoading}
+            handleAction={handleRideAction}
+          />
+        </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
-export default RideDetailScreen;
-
 const styles = StyleSheet.create({
-  scrollViewContent: {
-    flexGrow: 1,
-    backgroundColor: '#F9F9F9',
-  },
-  container: {
-    // This style is now managed by scrollViewContent, keeping it for reference
-  },
-  center: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 24,
-    color: '#333',
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 16,
-    color: '#555',
-    marginTop: 8,
-  },
-  value: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 8,
-  },
-  dropoffContainer: {
-    marginLeft: 16,
-    marginBottom: 8,
-  },
-  noDataText: {
-    fontSize: 16,
-    color: '#999',
-    textAlign: 'center',
-    marginTop: 16,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#FF3B3B',
-  },
-  actionButton: {
-    backgroundColor: Colors.primaryColor,
-    paddingVertical: 16,
-    marginVertical: 6,
-    borderRadius: 120,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-  },
-  disabledButton: {
-    backgroundColor: '#D1D1D1',
-  },
-  detailsContainer: {
-    padding: 16,
-    backgroundColor: Colors.whiteColor,
-    margin: 12,
+  safeArea: { flex: 1, backgroundColor: '#FFF' },
+  scrollContent: { paddingBottom: 40 },
+
+  // Header Summary
+  topSummaryCard: {
+    margin: 20,
+    padding: 20,
+    backgroundColor: '#F8F9FF',
     borderRadius: 24,
-    paddingTop: 32,
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E8ECFF',
+    marginBottom: 10,
   },
-  header: {
-    marginBottom: 20,
-  },
-  detailAddress: {
-    fontSize: 16,
-    marginBottom: 4,
-    color: Colors.headerColor,
-  },
-  detailRegion: {
-    fontSize: 15,
-    color: Colors.grayColor,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    marginTop: 10,
-    marginBottom: 6,
-    color: Colors.grayColor,
-  },
-  deliveryLocation: {
-    fontSize: 14,
-    color: Colors.headerColor,
-  },
-  riderInfo: {
-    flexDirection: 'column',
+  statusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 16,
+    marginBottom: 15,
   },
-  riderImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  statusMainText: { fontSize: 22, color: Colors.headerColor },
+  dateText: { fontSize: 13, color: Colors.grayColor, marginTop: 4 },
+  priceContainer: { flexDirection: 'row', alignItems: 'center' },
+  currency: { color: Colors.primaryColor, fontSize: 16, marginRight: 2 },
+  amount: { fontSize: 24, color: Colors.headerColor },
+
+  // Payment Badges
+  paymentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  paidBg: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+  unpaidBg: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
+  statusDotSmall: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
+  paymentText: { fontSize: 12, letterSpacing: 0.5 },
+  methodText: { fontSize: 11, color: '#6B7280', marginTop: 2 },
+
+  // Map Wrapper
+  mapWrapper: {
+    marginHorizontal: 20,
+    marginBottom: 25,
+  },
+
+  // Timeline UI
+  detailsContainer: { paddingHorizontal: 20 },
+  timelineItem: { flexDirection: 'row' },
+  timelineLeft: { alignItems: 'center', marginRight: 15 },
+  timelineDot: { width: 12, height: 12, borderRadius: 6, zIndex: 2 },
+  timelineLine: { flex: 1, width: 2, backgroundColor: '#F0F0F5' },
+  timelineRight: { flex: 1, paddingBottom: 30 },
+
+  sectionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 8,
   },
-  plateNumber: {
-    fontSize: 12,
-    color: Colors.grayColor,
+  labelDot: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
+  labelText: { fontSize: 11, color: Colors.grayColor, letterSpacing: 1 },
+  addressText: { fontSize: 16, color: Colors.headerColor, lineHeight: 22 },
+
+  // Contact Boxes
+  userActionBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    marginTop: 15,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 5,
+      },
+      android: { elevation: 1 },
+    }),
   },
-  buttonContainer: {
-    marginTop: 20,
-    flexDirection: 'column',
-    justifyContent: 'space-around',
-  },
-  parcelIdContainer: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    backgroundColor: Colors.grayColor,
+  userName: { fontSize: 15, color: Colors.headerColor },
+  codeBadge: {
     alignSelf: 'flex-start',
-    marginBottom: 8,
+    backgroundColor: Colors.primaryColorFaded,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 5,
   },
-  parcelIdText: {
-    fontSize: 16,
-    color: Colors.headerColor,
-    marginBottom: 14,
+  codeText: { fontSize: 10, color: Colors.primaryColor },
+  actionRow: { flexDirection: 'row', gap: 10 },
+  circleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
+
+  receiverBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    backgroundColor: '#FAFAFA',
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  receiverName: { fontSize: 14, color: Colors.headerColor },
+  receiverPhone: { fontSize: 12, color: Colors.grayColor },
+
+  actionFooter: { marginTop: 10,  },
 });
+
+export default RideDetailScreen;

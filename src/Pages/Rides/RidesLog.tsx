@@ -30,6 +30,7 @@ import { getUserProfile } from '../../Redux/User/userSlice';
 import ArrowRightIcon from '../../Components/Icons/Arrows/ArrowRightIcon';
 import { formatName } from '../Profile/Profile';
 import { Colors } from '../../Components/Colors/Colors';
+import UserLocationMap from '../Home/UserLocationMap';
 
 interface RideSocketLog {
   rideId: string;
@@ -225,7 +226,7 @@ const RidesLog: React.FC = () => {
               >
                 <Pressable
                   key={item?._id}
-                  style={{ gap: 8 }}
+                  style={{ gap: 8, width:'100%' }}
                   onPress={() =>
                     navigation.navigate('RideDetailScreen', {
                       rideId: item?.rideId,
@@ -234,7 +235,14 @@ const RidesLog: React.FC = () => {
                     })
                   }
                 >
-                  <BoldText
+                  {' '}
+                  <UserLocationMap
+                    pickup={item.pickup}
+                 //   rideStatus={'New Ride Request'}
+                    isRideStatus={true}
+                    ride={item?.ride}
+                  />
+                  {/* <BoldText
                     style={[
                       styles.actionButtonTextDark,
                       // { color: cardTextColor },
@@ -251,7 +259,7 @@ const RidesLog: React.FC = () => {
                   >
                     {item?.pickup?.pickupAddress ||
                       'Pickup address unavailable'}
-                  </RegularText>
+                  </RegularText> */}
                   <View
                     style={[
                       styles.actionButtonTextDarkPickup,
@@ -305,8 +313,8 @@ const styles = StyleSheet.create({
   },
   loaderContainer: {
     flex: 1,
-    justifyContent: 'center', 
-    alignItems: 'center',  
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 20,
   },
   loadingText: {
@@ -321,7 +329,7 @@ const styles = StyleSheet.create({
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 16,
   },
   rideInfo: {
     flex: 1,
@@ -347,7 +355,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionButtonTextDarkPickup: {
-    padding: 6,
+    padding: 4,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -355,7 +363,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   actionButtonTextDarkPickupText: {
-    fontSize: 16,
+    fontSize: 14,
     marginLeft: 6,
   },
   actionButtonTextDark: {

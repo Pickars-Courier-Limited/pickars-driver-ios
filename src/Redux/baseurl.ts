@@ -7,8 +7,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 //export const BaseUrl = `https://pickurps-server.onrender.com`
 
 //https://pickurps-server.onrender.com
+export const BaseUrl = `https://www.pickars-api.org`
+//export const BaseUrl = `http://localhost:5200`
 
-export const BaseUrl = `https://server-9mir.onrender.com`
+//export const BaseUrl = `https://server-9mir.onrender.com`
 
 export const WEB_BASE_URL = 'https://www.pickars.com';
 
